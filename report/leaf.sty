@@ -1,0 +1,118 @@
+% LEAF
+%    for LaTeX version 2e
+% Copyright -- 2021 Sanyam Kapoor
+%
+\NeedsTeXFormat{LaTeX2e}
+\ProvidesPackage{leaf}[2021 v0.2]
+
+\DeclareOption{authblk}{\gdef\optauthblk{1}}
+\DeclareOption{geometry}{\gdef\optgeometry{1}}
+\DeclareOption{ref}{\gdef\optref{1}}
+\DeclareOption{minted}{\gdef\optminted{1}}
+\ProcessOptions\relax
+
+\PassOptionsToPackage{english}{babel}
+\PassOptionsToPackage{utf8}{inputenc}
+\PassOptionsToPackage{newfloat}{minted}
+\PassOptionsToPackage{dvipsnames,svgnames,x11names,table}{xcolor}
+
+\RequirePackage{adjustbox}
+\RequirePackage{amsfonts}
+\RequirePackage{amsmath}
+\RequirePackage{amssymb}
+% \RequirePackage{amsthm}
+\ifdefined\optauthblk \RequirePackage{authblk} \fi
+\RequirePackage{babel}
+\RequirePackage{bm}
+\RequirePackage{booktabs}
+\RequirePackage{cancel}
+\RequirePackage{caption}
+\RequirePackage{enumitem}
+\RequirePackage{etoolbox}
+\RequirePackage{fancyvrb}
+\ifdefined\optgeometry \RequirePackage{geometry} \fi
+\RequirePackage{graphicx}
+\RequirePackage{inputenc}
+\RequirePackage{kantlipsum}
+\RequirePackage{listings}
+\RequirePackage{mathtools}
+\RequirePackage{microtype}
+\ifdefined\optminted \RequirePackage{minted} \fi
+\RequirePackage{natbib}
+\RequirePackage{nicefrac}
+\RequirePackage{subfigure}
+\RequirePackage{tikz}
+\RequirePackage{url}
+\RequirePackage{verbatim}
+\RequirePackage{wrapfig}
+\RequirePackage{xcolor}
+
+%% Load these after everything else.
+\ifdefined\optref
+\PassOptionsToPackage{bookmarks,pagebackref=true}{hyperref}
+\PassOptionsToPackage{capitalise,noabbrev}{cleveref}
+
+\usepackage{hyperref}
+\usepackage{cleveref}
+\fi
+
+%% Natbib settings
+% \renewcommand\bibsection{\subsection*{\refname}}
+% \renewcommand{\bibfont}{\footnotesize}
+
+%% Code
+\newenvironment{code}{\captionsetup{type=listing}}{}
+
+%% TikZ settings
+\usetikzlibrary{positioning,arrows.meta,quotes,shapes,bayesnet}
+% \tikzset{>=latex}
+
+%% Skip spacing around equation display (use inside document environment).
+\newcommand{\displayskip}[1]{
+  \setlength{\abovedisplayskip}{#1}
+  \setlength{\belowdisplayskip}{#1}
+  \setlength{\abovedisplayshortskip}{#1}
+  \setlength{\belowdisplayshortskip}{#1}
+}
+
+%% Colors
+\definecolor{nyupurple}{RGB}{134, 0, 179}
+
+%% Text highlights.
+\newcommand{\info}[1]{\textcolor{ForestGreen}{\textbf{#1}}}
+\newcommand{\warn}[1]{\textcolor{RedOrange}{\textbf{#1}}}
+
+%% Transforms
+\newcommand{\mbf}[1]{{\ensuremath{\boldsymbol{\mathbf{#1}}}}}  % Bold Math
+\newcommand{\vrb}[1]{\Verb+#1+}  % Verbatim
+
+%% Notations
+\newcommand{\gp}[1]{\ensuremath{\mathcal{GP}\left(#1\right)}}  % GP
+\newcommand{\kl}{\ensuremath{\mathcal{KL}}}  % KL-divergence
+\newcommand{\gaussian}[1]{\ensuremath{\mathcal{N}\left(#1\right)}}  % Gaussian
+\newcommand{\mean}[1]{\ensuremath{\mathbb{E}\left[#1\right]}}  % Expectation
+\newcommand{\cov}[1]{\ensuremath{\mathrm{cov}\left(#1\right)}}  % Covariance
+\newcommand{\defeq}{\ensuremath{\triangleq}}  % Definition
+\newcommand{\bigo}[1]{\ensuremath{\mathcal{O}\left(#1\right)}}  % Big-O
+% \DeclarePairedDelimiter{\ceil}{\lceil}{\rceil}
+% \DeclarePairedDelimiter{\floor}{\lfloor}{\rfloor}
+\newcommand{\ceil}[1]{\ensuremath{\left\lceil #1 \right\rceil}} % Ceiling
+\newcommand{\floor}[1]{\ensuremath{\left\lfloor #1 \right\rfloor}} % Floor
+\newcommand{\determ}[1]{\ensuremath{\left\lvert#1\right\rvert}}  % Determinant
+\newcommand{\logdet}[1]{\ensuremath{\log{\determ{#1}}}} % Log-Determinant
+\newcommand{\norm}[1]{\ensuremath{\left\lVert#1\right\rVert}}  % norm
+\newcommand{\ci}{\ensuremath{\mathrel{\perp\mspace{-10mu}\perp}}}  % conditional independence
+\newcommand{\nci}{\ensuremath{\cancel{\ci}}}  % conditional dependence
+\newcommand{\tr}[1]{\text{tr}\ensuremath{\left(#1\right)}} % Trace
+\newcommand{\pd}[2]{\ensuremath{\tfrac{\partial #1}{\partial #2}}} % Partial Derivatives
+
+%% Variables
+\newcommand{\reals}{\ensuremath{\mathbb{R}}}  % Real Numbers
+\newcommand{\naturals}{\ensuremath{\mathbb{N}}}  % Natural Numbers
+\newcommand{\ints}{\ensuremath{\mathbb{Z}}}  % Integers
+\newcommand{\dset}{\ensuremath{\mathcal{D}}}  % Dataset
+\newcommand{\xvec}{\mbf{x}}  % vector x
+\newcommand{\yvec}{\mbf{y}}  % vector y
+\newcommand{\fvec}{\mbf{f}}  % vector f
+\newcommand{\Xvec}{\mbf{X}}  % vector X (caps)
+\newcommand{\Yvec}{\mbf{Y}}  % vector Y (caps)

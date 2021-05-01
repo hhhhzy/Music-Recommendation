@@ -1,0 +1,66 @@
+\documentclass{article}
+
+%% Preemptively pass options to avoid import conflicts.
+\PassOptionsToPackage{linesnumbered,ruled,vlined}{algorithm2e}
+\PassOptionsToPackage{capitalise,noabbrev}{cleveref}
+\PassOptionsToPackage{margin=1in}{geometry}
+\PassOptionsToPackage{pagebackref=true}{hyperref}
+\PassOptionsToPackage{numbers,compress}{natbib}
+
+\usepackage[abbrvbib,nohyperref,preprint]{jmlr2e}
+\usepackage[ref]{leaf}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+
+%% Cleveref settings
+\crefname{equation}{}{}
+\Crefname{equation}{}{}
+
+% Heading arguments are {volume}{year}{pages}{date submitted}{date published}{paper id}{author-full-names}
+%% \jmlrheading{}{}{}{}{}{}{}
+
+% Short headings should be running head and authors last names
+% \ShortHeadings{}{}
+
+\firstpageno{1}
+
+\begin{document}
+
+\title{DS-GA 1004: Building Recommender Systems}
+
+\author{\name Zheyuan Hu \email zh2095@nyu.edu \AND
+\name Ye Eun Jeong \email yej208@nyu.edu \AND
+\name Sanyam Kapoor \email sk6876@nyu.edu \AND
+\name Hongmiao Yu \email hy1709@nyu.edu
+}
+
+% \author{}
+% \editor{}
+
+\maketitle
+
+%\begin{abstract}%   <- trailing '%' for backward compatibility of .sty file
+%
+%\end{abstract}
+
+\vspace{-2em}
+
+\section{Introduction}
+
+\warn{TODO} \citet{yifan2008,koren2009}
+
+\section{Extensions}
+
+\warn{TODO} \citet{spark2010,sparksql2015}
+
+\section{Results}
+
+\warn{TODO}
+
+\section*{Contributions}
+
+\warn{TODO}: Add contribution statements from each member here.
+
+\bibliography{references}
+
+\end{document}
