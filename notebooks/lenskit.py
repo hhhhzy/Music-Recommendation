@@ -7,6 +7,7 @@
 import logging
 import pickle
 
+import lenskit
 from lenskit.batch import MultiEval
 from lenskit.crossfold import partition_users, SampleN
 from lenskit.algorithms import basic, als
