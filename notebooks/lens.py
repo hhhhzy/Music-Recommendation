@@ -3,7 +3,6 @@
 
 # In[ ]:
 
-!pip install lenskit
 
 import logging
 import pickle
