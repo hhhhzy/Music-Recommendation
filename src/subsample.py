@@ -2,7 +2,10 @@ import argparse
 from typing import Optional
 try:
   from pyspark.sql import SparkSession
+  from pyspark.ml import Pipeline
+  from pyspark.ml.feature import StringIndexer
   import pyspark.sql.functions as F
+  from pyspark.sql.types import IntegerType
 except ImportError:
   # May not work without spark-submit.
   pass
@@ -18,6 +21,8 @@ class MSDSubSampler:
   def topk(self, k: int = 10000, seed: Optional[int] = None, mode: str = 'train'):
     '''Extracts top-k interacting users and creates a random 80/20 split among them.
 
+    String indexing is also applied before splitting.
+
     Arguments:
       k: Number of top users to fetch.
       seed: Seed for random split.
@@ -27,16 +32,26 @@ class MSDSubSampler:
     df.printSchema()
     # df.createOrReplaceTempView('ui')
 
-    print(f'{df.select("user_id").distinct().count()} training users with {df.count()} interactions.')
-    print(f'Selecting top {k}...')
+    # print(f'{df.select("user_id").distinct().count()} users with {df.count()} interactions.')
 
+    # Select top-k users by interaction counts.
     top_users = df.groupBy('user_id').count().orderBy(F.col('count').desc()).limit(k).select('user_id')
-    # top_users.show()
+    top_intrs = df.join(top_users, on='user_id', how='inner')
 
-    top_interactions = df.join(top_users, on='user_id', how='inner')
-    print(f'Filtered {top_interactions.count()} interactions.')
+    # Apply indexing for downstream usage.
+    pipeline = Pipeline(stages=[
+      StringIndexer(inputCol=col, outputCol=f'{col}_index')
+      for col in ['user_id', 'track_id']])
+    top_intrs = pipeline.fit(top_intrs).transform(top_intrs)
+    top_intrs = top_intrs \
+                .withColumn('user_id_index', F.col('user_id_index').cast(IntegerType())) \
+                .withColumn('track_id_index', F.col('track_id_index').cast(IntegerType()))
+    top_intrs.show()
 
-    sub_train, sub_val = top_interactions.randomSplit([0.8, 0.2], seed=seed)
+    print(f'Filtered {k} users with {top_intrs.count()} interactions.')
+
+    # Generate random 80/20 split.
+    sub_train, sub_val = top_intrs.randomSplit([0.8, 0.2], seed=seed)
     print(f'(Sub)Train: {sub_train.count()}; (Sub)Validation: {sub_val.count()}.')
 
     out_suffix = f'top{k}_{seed if seed is not None else "unseeded"}'
@@ -68,5 +83,6 @@ if __name__ == "__main__":
                       default=None,
                       help='Target HDFS directory to save generated files.')
   args = parser.parse_args()
+  print(args)
 
   MSDSubSampler(args.out_dir).topk(k=args.k, seed=args.seed)

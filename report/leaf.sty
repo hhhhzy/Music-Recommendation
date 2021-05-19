@@ -8,12 +8,11 @@
 \DeclareOption{authblk}{\gdef\optauthblk{1}}
 \DeclareOption{geometry}{\gdef\optgeometry{1}}
 \DeclareOption{ref}{\gdef\optref{1}}
-\DeclareOption{minted}{\gdef\optminted{1}}
 \ProcessOptions\relax
 
 \PassOptionsToPackage{english}{babel}
 \PassOptionsToPackage{utf8}{inputenc}
-\PassOptionsToPackage{newfloat}{minted}
+%\PassOptionsToPackage{newfloat}{minted}
 \PassOptionsToPackage{dvipsnames,svgnames,x11names,table}{xcolor}
 
 \RequirePackage{adjustbox}
@@ -36,8 +35,8 @@
 \RequirePackage{kantlipsum}
 \RequirePackage{listings}
 \RequirePackage{mathtools}
-\RequirePackage{microtype}
-\ifdefined\optminted \RequirePackage{minted} \fi
+%\RequirePackage{microtype}
+%\ifdefined\optminted \RequirePackage{minted} \fi
 \RequirePackage{natbib}
 \RequirePackage{nicefrac}
 \RequirePackage{subfigure}
@@ -55,6 +54,9 @@
 \usepackage{hyperref}
 \usepackage{cleveref}
 \fi
+
+%% Verbatim settings
+\VerbatimFootnotes % enable use of \Verb in footnotes
 
 %% Natbib settings
 % \renewcommand\bibsection{\subsection*{\refname}}
@@ -84,7 +86,6 @@
 
 %% Transforms
 \newcommand{\mbf}[1]{{\ensuremath{\boldsymbol{\mathbf{#1}}}}}  % Bold Math
-\newcommand{\vrb}[1]{\Verb+#1+}  % Verbatim
 
 %% Notations
 \newcommand{\gp}[1]{\ensuremath{\mathcal{GP}\left(#1\right)}}  % GP
@@ -105,6 +106,9 @@
 \newcommand{\nci}{\ensuremath{\cancel{\ci}}}  % conditional dependence
 \newcommand{\tr}[1]{\text{tr}\ensuremath{\left(#1\right)}} % Trace
 \newcommand{\pd}[2]{\ensuremath{\tfrac{\partial #1}{\partial #2}}} % Partial Derivatives
+
+\DeclareMathOperator*{\argmin}{\arg\min}
+\DeclareMathOperator*{\argmax}{\arg\max}
 
 %% Variables
 \newcommand{\reals}{\ensuremath{\mathbb{R}}}  % Real Numbers

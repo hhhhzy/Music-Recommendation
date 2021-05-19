@@ -172,5 +172,5 @@ if __name__ == "__main__":
   parser.add_argument('--grid-search', action='store_true', help='Flag for grid search.')
   args = parser.parse_args()
 
-  sc = SparkSession.builder.appName('ALSTrainer').config('spark.blacklist.enabled', False).getOrCreate()
+  sc = SparkSession.builder.appName('ALSTrainer').getOrCreate()
   train_als(sc, args)

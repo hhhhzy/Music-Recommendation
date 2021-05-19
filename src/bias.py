@@ -1,9 +1,14 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-from pyspark.sql import SparkSession
-from pyspark.sql.functions import mean as _mean, col
-from pyspark.ml.evaluation import RegressionEvaluator
+import json
+import time
+from pyspark.ml import Pipeline
+from pyspark.ml.feature import StringIndexer
+from pyspark.sql import SparkSession, DataFrame as SparkDataFrame
+from pyspark.sql.functions import mean as _mean, col, sort_array, collect_list, struct, udf
+from pyspark.mllib.evaluation import RankingMetrics
+from pyspark.sql.types import StringType, ArrayType, StructType, StructField, FloatType, IntegerType
 import argparse
 
 
@@ -50,6 +55,36 @@ class Bias:
         if self.item_damping < 0:
             raise ValueError("item damping must be non-negative")
 
+    def torating(self, data):
+        describe = data.describe(['count']).collect()
+        stddev = float(describe[2]['count'])
+        mean = float(describe[1]['count'])
+        max = mean + 2 * stddev
+        min = mean - 2 * stddev
+        mul = float((max - min) / 100)
+
+        @udf(FloatType())
+        def counttrans(count):
+            if count < min:
+                count = min
+            elif count > max:
+                count = max
+
+            percentiles = (count - min) / mul
+            if percentiles > 100:
+                percentiles = 100
+            elif percentiles < 0:
+                percentiles = 0
+            result = percentiles / 100 * 5
+
+            return result if result > 0 else 0.05
+
+        result = data.withColumn('count', counttrans(col('count')))
+
+        return result
+
+
+
     def fit(self, ratings):
         """
         Train the bias model on some rating data.
@@ -93,15 +128,79 @@ class Bias:
         """
 
         if self.item_offsets_ is not None:
-            rvsp = ratings.join(self.item_offsets_, on='track_id', how='left') \
+            rvsp = self.item_offsets_.join(ratings, on='track_id', how='left') \
                 .fillna({'track_id_off': 0}) \
                 .withColumn('prediction', self.mean + col('track_id_off'))
         if self.user_offsets_ is not None:
-            rvsp = rvsp.join(self.user_offsets_, on='user_id', how='left') \
+            rvsp = self.user_offsets_.join(rvsp, on='user_id', how='left') \
                 .fillna({'user_id_off': 0}) \
                 .withColumn('prediction', col('prediction') + col('user_id_off')) \
                 .select('prediction', 'user_id', 'track_id', 'count')
         return rvsp
+
+    def recommendForUserSubset(self, data: SparkDataFrame, k: int = 50, colName: str = 'prediction'):
+
+        stringIndexer = StringIndexer(inputCol="track_id", outputCol="track_id_indexed", handleInvalid="skip", stringOrderType="frequencyDesc")
+        model = stringIndexer.fit(data)
+        data = model.transform(data).withColumn('track_id_indexed', col('track_id_indexed').cast(IntegerType()))
+
+        limit = udf(lambda z: z[0:k], ArrayType(IntegerType(), True))
+        if colName == 'count':
+            recommend = data.groupBy('user_id').agg(
+                sort_array(collect_list(struct(colName, 'track_id_indexed')), asc=False).alias('list')) \
+                .withColumn('labels', col('list.track_id_indexed')).drop('list')
+        else:
+            recommend = data.groupBy('user_id').agg(
+                sort_array(collect_list(struct(colName, 'track_id_indexed')), asc=False).alias('list')) \
+                .withColumn('labels', col('list.track_id_indexed')).drop('list')
+
+        return recommend
+
+    def score(self, data: SparkDataFrame, k: int = 50) -> dict:
+        predictions = self.recommendForUserSubset(self.predict(data), k, 'prediction') \
+            .withColumnRenamed('labels', 'prediction')
+        label = self.recommendForUserSubset(data, k, 'count')
+        results = label.join(predictions, on='user_id', how='left')
+        # results.select('prediction', 'labels').show(n=30, truncate=False, vertical=True)
+        _array = udf(lambda z: list() if z is None else z, ArrayType(IntegerType(), True))
+        result_rdd = results.select('prediction', 'labels').withColumn('labels', _array(col('labels'))).withColumn('prediction', _array(col('prediction'))).rdd
+        # print(results.select('prediction', 'labels').rdd.take(5))
+        metrics = RankingMetrics(result_rdd)
+
+        ###
+        ## NOTE: RankingEvaluator does not work with PySpark 2.4.0.
+        ## See https://spark.apache.org/docs/latest/api/python/reference/api/pyspark.ml.evaluation.RankingEvaluator.html
+
+        # evaluator = RankingEvaluator(predictionCol='predictions', labelCol='labels')
+        # value = evaluator.evaluate(results,
+        #                            {evaluator.metricName: 'precisionAtK', evaluator.k: k})
+
+        return {
+            'map': metrics.meanAveragePrecision,
+            f'ndcgAt{k}': metrics.ndcgAt(k),
+            f'precisionAt{k}': metrics.precisionAt(k)
+        }
+
+    def save(self, spark, path):
+        data = ([(self.mean,)])
+
+        schema = StructType([StructField("mean", FloatType(), True)])
+
+        df = spark.createDataFrame(data=data, schema=schema)
+        df.write.mode('overwrite').parquet(path + 'mean.parquet')
+        self.user_offsets_.write.mode('overwrite').parquet(path + 'user_offsets_.parquet')
+        self.item_offsets_.write.mode('overwrite').parquet(path + 'item_offsets_.parquet')
+        print(f'save {self.mean}, {self.user_offsets_}, {self.item_offsets_} to {path}')
+
+    def load(self, spark, path):
+        model = spark.read.parquet(path + 'mean.parquet')
+        model_stat = model.select('*').collect()
+        self.mean = model_stat[0]['mean']
+        self.user_offsets_ = spark.read.parquet(path + 'user_offsets_.parquet')
+        self.item_offsets_ = spark.read.parquet(path + 'item_offsets_.parquet')
+        print(f'load {self.mean}, {self.user_offsets_}, {self.item_offsets_} from {path}')
+
+        return self
 
     def _group(self, group, damping, id):
         if damping is not None and damping > 0:
@@ -123,20 +222,40 @@ class Bias:
             return group.mean('minus')
 
 
-def main(spark, train_dir, test_dir, damping):
+def main(spark, train_dir, test_dir, val_dir, damping, k, save_dir, load_dir, torating: bool=False):
     """
     test of Class Bias
     """
-
-    rating = spark.read.parquet(train_dir)
-
-    rating_test = spark.read.parquet(test_dir)
-
     test = Bias(item=True, users=True, damping=damping)
-    predictions = test.fit(rating).predict(rating_test)
-    evaluator = RegressionEvaluator(metricName="rmse", labelCol="count", predictionCol="prediction")
-    rmse = evaluator.evaluate(predictions)
-    print("Root-mean-square error = " + str(rmse))
+    raw_train_data = spark.read.parquet(train_dir)
+    train_data = test.torating(raw_train_data) if torating else raw_train_data
+    if (load_dir is not None):
+        predictions = test.load(spark, load_dir)
+    else:
+        start = time.time()
+        predictions = test.fit(train_data)
+        end = time.time()
+        print(f'fit function spends {end - start}')
+        if (save_dir is not None):
+            predictions.save(spark, save_dir)
+
+    results = {}
+
+    train_metrics = predictions.score(train_data, k)
+    for m, v in train_metrics.items():
+        results[f'train/{m}'] = v
+
+    if val_dir:
+        val_metrics = predictions.score(spark.read.parquet(val_dir), k)
+        for m, v in val_metrics.items():
+            results[f'val/{m}'] = v
+
+    if test_dir:
+        test_metrics = predictions.score(spark.read.parquet(test_dir), k)
+        for m, v in test_metrics.items():
+            results[f'test/{m}'] = v
+
+    print(json.dumps(results, indent=2))
 
 
 if __name__ == "__main__":
@@ -156,17 +275,34 @@ if __name__ == "__main__":
                         default=None, help='Train data directory')
     parser.add_argument('-te', '--test', type=str, dest='test_dir', metavar='',
                         default=None, help='Test data directory')
+    parser.add_argument('-v', '--val', type=str, dest='val_dir', metavar='',
+                        default=None, help='Val data directory')
     parser.add_argument('-du', '--user_dampling', type=int, dest='user_damping', metavar='',
                         default=None,
                         help='damping of bias model')
     parser.add_argument('-di', '--item_dampling', type=int, dest='item_damping', metavar='',
                         default=None,
                         help='item damping of bias model')
+    parser.add_argument('-k', '--k', type=int, dest='k', metavar='',
+                        default=None,
+                        help='top k recommendation')
+    parser.add_argument('-l', '--load', type=str, dest='load_dir', metavar='',
+                        default=None,
+                        help='load file directory')
+    parser.add_argument('-s', '--save', type=str, dest='save_dir', metavar='',
+                        default=None,
+                        help='save  file directory')
+    parser.add_argument('-r', '--rating', type=int, dest='rating', metavar='',
+                        default=None,
+                        help='transfer to rating or not 1 for ture')
     args = parser.parse_args()
 
-    spark = SparkSession.builder.appName('bias_test').getOrCreate()
+    spark = SparkSession.builder.appName('bias_test').config('spark.blacklist.enabled', False).getOrCreate()
 
     damping = (args.user_damping, args.item_damping)
 
-    main(spark=spark, train_dir=args.train_dir, test_dir=args.test_dir, damping=damping)
+    transferrate = True if args.rating == 1 else False
+
+    main(spark=spark, train_dir=args.train_dir, test_dir=args.test_dir, val_dir=args.val_dir, damping=damping, k=args.k,
+         save_dir=args.save_dir, load_dir=args.load_dir, torating=transferrate)
 

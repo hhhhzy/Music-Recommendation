@@ -1,3 +1,6 @@
+import argparse
+from typing import Optional
+from functools import reduce
 try:
   from pyspark.sql import SparkSession
 
@@ -6,65 +9,101 @@ try:
   from pyspark.ml.feature import StringIndexer
   from pyspark.sql.functions import col
   from pyspark.sql.types import IntegerType
+  from pyspark.sql import DataFrame
+  from pyspark.sql.functions import lit
+  from pyspark.sql.DataFrame import filter
+  from pyspark.sql.DataFrame import collect
 except ImportError:
   # Pyspark imports will not work on Peel without spark-submit
   pass
 
 class Preprocessor:
-  DATADIR = 'hdfs:/user/yej208/quarantini'
-  #DATADIR = 'hdfs:/user/bm106/pub/MSD'
+  DATADIR = 'hdfs:/user/bm106/pub/MSD'
 
-  OUTPUTDIR = 'hdfs:/user/yej208/quarantini'
-  TRAIN_OUTFILE = 'cf_train_subtrain_top10_1004_processed.parquet'
-  VAL_OUTFILE = 'cf_train_subval_top10_1004_processed.parquet'
+  TRAINFILE = 'cf_train.parquet'
+  VALFILE = 'cf_validation.parquet'
+  TESTFILE = 'cf_test.parquet'
 
-  # Run on smaller train/val files on personal HDFS directory
-  TRAINFILE = 'cf_train_subtrain_top10_1004.parquet'
-  VALFILE = 'cf_train_subval_top10_1004.parquet'
+  FILES = [TRAINFILE, VALFILE, TESTFILE]
 
-  # Run on master train/val/test files on public HDFS directory
-  #TRAINFILE = 'cf_train.parquet'
-  #VALFILE = 'cf_validation.parquet'
-  #TESTFILE = 'cf_test.parquet'
+  TRAIN_OUTFILE = 'cf_train_processed_droplowcounts.parquet'
+  VAL_OUTFILE = 'cf_val_processed_droplowcounts.parquet'
+  TEST_OUTFILE = 'cf_test_processed_droplowcounts.parquet'
 
-  FILES = [TRAINFILE, VALFILE] # include TESTFILE if needed
-
-  def __init__(self):
+  def __init__(self, outdir: str):
     self.spark = SparkSession.builder.appName('Preprocessor').getOrCreate()
+    self.outdir = outdir
 
+  def union(self, dataframes):
+    return reduce(DataFrame.union, dataframes)
 
-  '''
-  See following documentation re: "handleInvalid" attribute in StringIndexer
-  https://spark.apache.org/docs/latest/api/python/reference/api/pyspark.ml.feature.StringIndexer.html#pyspark.ml.feature.StringIndexer.handleInvalid
-  '''
   def index(self):
-    train = self.spark.read.parquet(f'{self.DATADIR}/{self.TRAINFILE}')
-    val = self.spark.read.parquet(f'{self.DATADIR}/{self.VALFILE}')
+    # read in original files
+    train_original = self.spark.read.parquet(f'{self.DATADIR}/{self.TRAINFILE}')
+    val_original = self.spark.read.parquet(f'{self.DATADIR}/{self.VALFILE}')
+    test_original = self.spark.read.parquet(f'{self.DATADIR}/{self.TESTFILE}')
+
+    # append original source as a column to each dataframe
+    train = train_original.withColumn('source', lit(0))
+    val = val_original.withColumn('source', lit(1))
+    test = test_original.withColumn('source', lit(2))
+    
+    # verify that column has been appended
+    print(f'>>> train set')
+    train.show()
+    print(f'>>> val set')
+    val.show()
+    print(f'>>> test set')
+    test.show()
+ 
+    # merge the files into one for running StringIndexer on it
+    dataframes = [train, val, test]
+    merged = self.union(dataframes)
+    print(f'>>> merged dataframes')
+    merged.show() 
+
+    # in the merged dataset, drop all records with counts lower than dropThreshold=2
+    dropThreshold = 2
+    merged = merged.filter(merged.count < dropThreshold).collect()
 
     cols_to_index = ['user_id', 'track_id']
     indexers = [StringIndexer(inputCol=col, outputCol=col+"_index", handleInvalid='skip') for col in cols_to_index]
     pipeline = Pipeline(stages=indexers)
 
-    indexer_model = pipeline.fit(train)
-    train_indexed = indexer_model.transform(train)
-    val_indexed = indexer_model.transform(val)
+    indexer_model = pipeline.fit(merged)
+    indexed = indexer_model.transform(merged)
 
-    print(f'>>> train indexed:')
+    # split the dataframes again based on original source
+    train_indexed = indexed[indexed['source'] == 0]
+    val_indexed = indexed[indexed['source'] == 1]
+    test_indexed = indexed[indexed['source'] == 2]
+
+    # format each one to only select necessary columns
+    train_indexed = self.format_indexed_df(train_indexed)
+    val_indexed = self.format_indexed_df(val_indexed)
+    test_indexed = self.format_indexed_df(test_indexed)
+
+    # verify format
+    print(f'>>> indexed train set')
     train_indexed.show()
-    print(f'>>> val indexed:')
+    print(f'>>> indexed val set')
     val_indexed.show()
+    print(f'>>> indexed test set')
+    test_indexed.show()
 
-    train_formatted = self.format_indexed_df(val_indexed)
-    val_formatted = self.format_indexed_df(train_indexed)
+    # check counts of each split
+    train_count = train_indexed.count()
+    val_count = val_indexed.count()
+    test_count = test_indexed.count()
 
-    print(f'>>> train formatted:')
-    train_formatted.show()
-    print(f'>>> train formatted:')
-    val_formatted.show()
+    print(f'dataset entry counts with dropThreshold={dropThreshold}:')
+    print(f'>>> train set count: {train_count}')
+    print(f'>>> val set count: {val_count}')
+    print(f'>>> test set count: {test_count}')
 
-    train_formatted.write.parquet(f'{self.OUTPUTDIR}/{self.TRAIN_OUTFILE}')
-    val_formatted.write.parquet(f'{self.OUTPUTDIR}/{self.VAL_OUTFILE}')
-
+    test_indexed.write.parquet(f'{self.outdir}/{self.TRAIN_OUTFILE}')
+    val_indexed.write.parquet(f'{self.outdir}/{self.VAL_OUTFILE}')
+    test_indexed.write.parquet(f'{self.outdir}/{self.TEST_OUTFILE}')
 
   def format_indexed_df(self, df):
     df = df[['user_id_index', 'count', 'track_id_index']]
@@ -72,27 +111,14 @@ class Preprocessor:
            .withColumn('track_id_index', col('track_id_index').cast(IntegerType()))
     return df
 
-
-  '''
-  Simple demo implementation of StringIndexer
-  '''
-  def index_simple(self):
-    train = self.spark.read.parquet(f'{self.DATADIR}/{self.TRAINFILE}')
-    val = self.spark.read.parquet(f'{self.DATADIR}/{self.VALFILE}')
-
-    cols_to_index = ['user_id', 'track_id']
-    indexer = StringIndexer(inputCol='user_id', outputCol='user_id_index')
-
-    indexer_model = indexer.fit(train)
-    train_indexed = indexer_model.transform(train)
-    val_indexed = indexer_model.transform(val)
-
-    train_indexed.show()
-    val_indexed.show()
-
-
-
 if __name__ == "__main__":
-  Preprocessor().index()
+  parser = argparse.ArgumentParser(description='Preprocess the data.')
+  parser.add_argument('-o', '--outdir', type=str, dest='outdir', metavar='',
+                      default='hdfs:/user/yej208/quarantini/data',
+                      help='Target HDFS directory to save generated files.')
+  args = parser.parse_args()
+  print(args)
+
+  Preprocessor(args.outdir).index()
 
 

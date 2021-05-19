@@ -1,34 +1,44 @@
 # Recommender Systems
 
-## Example Commands
+The final report is [here](./report/report.pdf).
 
-### HDFS Access
+## Usage
 
-To provide read and execute access to HDFS folder.
+### Subsampling
 
-```shell
-hfs -setfacl -R -m user:<user_id>:r-x </path/to/hdfs/folder>
-```
+For the subsampling script, see [subsample.sh](./scripts/subsample.sh) for usage. The subsampling logic is implemented
+in [subsample.py](./src/subsample.py).
 
-### Subsampling from training data
+### ALS Model Training
 
-To subsample top-k (`-k`) users from the training data set and an 80/20 split,
-with a fixed seed (`-s`).
-
-```shell
-spark-submit --conf spark.executor.memory=4g src/subsample.py \
-  -o hdfs:/user/${USER}/quarantini -s 1004 -k 10
-```
-
+The training using ALS is implemented in [als-train.py](./src/als-train.py). See [als-train.sh](./scripts/als-train.sh) for sample usage to train and evaluate a single model.
 
 ### Popularity-based baseline model
 
-To use the Popularity-based baseline model tran(`-tr`) and test(`-te`),
-based on user damping(`-du`) and item damping(`-di`)
+For the Popularity-based baseline model script, see [bias.sh](./scripts/bias.sh) for usage. The bias model logic is implemented
+in [bias.py](./src/bias.py).
+
+## Utility Commands
+
+### HDFS Access
+
+To give read and execute access for your HDFS folder to the user you want.
 
 ```shell
-  spark-submit --conf spark.executor.memory=4g bias.py \
-   -tr hdfs:/user/${USER}/quarantini/${TrainFile} \
-    -te hdfs:/user/${USER}/quarantini/${TestFile} \
-     -du ${USER_DAMPING} -di ${ITEM_DAMPING}
+hfs -setfacl -R -m user:<user_id>:rwx </path/to/hdfs/folder>
+```
+
+Check that the permissions have been sucessfully granted by:
+
+```shell
+hfs -getfacl -R </path/to/hdfs/folder>
+```
+
+### Access full pre-processed data
+View the files with `hfs -ls ${PATH}`. Full pre-processed files are located here:
+
+```shell
+hdfs:///user/yej208/quarantini/data/cf_test_processed.parquet
+hdfs:///user/yej208/quarantini/data/cf_train_processed.parquet
+hdfs:///user/yej208/quarantini/data/cf_val_processed.parquet
 ```

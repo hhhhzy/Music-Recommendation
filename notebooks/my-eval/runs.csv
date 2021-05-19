@@ -1,6 +1,0 @@
-RunId,DataSet,Partition,AlgoClass,AlgoStr,name,features,TrainTime,PredTime,RecTime
-1,song,1,BiasedMF,"als.BiasedMF(features=5, regularization=0.1)",ImplicitMF,5,3.0304174999999987,3.3843952000000037,3.3356005999999994
-2,song,2,BiasedMF,"als.BiasedMF(features=5, regularization=0.1)",ImplicitMF,5,0.02952049999999673,3.361742999999997,3.348220000000005
-3,song,3,BiasedMF,"als.BiasedMF(features=5, regularization=0.1)",ImplicitMF,5,0.027617499999998074,3.3461494000000016,3.398653700000004
-4,song,4,BiasedMF,"als.BiasedMF(features=5, regularization=0.1)",ImplicitMF,5,0.025799499999997977,3.3316125999999997,3.3878236999999984
-5,song,5,BiasedMF,"als.BiasedMF(features=5, regularization=0.1)",ImplicitMF,5,0.026903799999999478,3.2617556000000008,3.3441812999999954
